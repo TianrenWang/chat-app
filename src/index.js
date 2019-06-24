@@ -15,8 +15,43 @@ const publicDirectoryPath = path.join(__dirname, '../public')
 
 app.use(express.static(publicDirectoryPath))
 
+function makeid(length) {
+    var result           = '';
+    var characters       = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    var charactersLength = characters.length;
+    for ( var i = 0; i < length; i++ ) {
+        result += characters.charAt(Math.floor(Math.random() * charactersLength));
+    }
+    return result;
+}
+
 io.on('connection', (socket) => {
     console.log('New WebSocket connection')
+
+    socket.join("waiting")
+
+    socket.on('entered queue', (username, callback) => {
+        const { error, user } = addUser({ id: socket.id, username: username, room: "waiting" })
+
+        if (error) {
+            return callback(error)
+        }
+
+        let waitingUsers = getUsersInRoom("waiting")
+
+        while (waitingUsers.length > 1) {
+            const user1 = waitingUsers.pop()
+            const user2 = waitingUsers.pop()
+            const roomID = makeid(5)
+            const socket1 = io.sockets.connected[user1.id]
+            const socket2 = io.sockets.connected[user2.id]
+            socket1.emit("matched", roomID)
+            socket2.emit("matched", roomID)
+            console.log("Matched")
+        }
+
+        callback()
+    })
 
     socket.on('join', (options, callback) => {
         const { error, user } = addUser({ id: socket.id, ...options })
