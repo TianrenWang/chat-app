@@ -1,9 +1,8 @@
-const users = []
+const users = [];
 
-const addUser = ({ id, username, room }) => {
+const addUser = ({ id, username, room, position, rating}) => {
     // Clean the data
-    username = username.trim().toLowerCase()
-    room = room.trim().toLowerCase()
+    username = username.trim().toLowerCase();
 
     // Validate the data
     if (!username || !room) {
@@ -15,7 +14,7 @@ const addUser = ({ id, username, room }) => {
     // Check for existing user
     const existingUser = users.find((user) => {
         return user.room === room && user.username === username
-    })
+    });
 
     // Validate username
     if (existingUser) {
@@ -25,31 +24,37 @@ const addUser = ({ id, username, room }) => {
     }
 
     // Store user
-    const user = { id, username, room }
-    users.push(user)
+    const user = { id, username, room, position, rating};
+    users.push(user);
     return { user }
-}
+};
 
 const removeUser = (id) => {
-    const index = users.findIndex((user) => user.id === id)
+    const index = users.findIndex((user) => user.id === id);
 
     if (index !== -1) {
         return users.splice(index, 1)[0]
     }
-}
+};
 
 const getUser = (id) => {
     return users.find((user) => user.id === id)
-}
+};
 
 const getUsersInRoom = (room) => {
-    room = room.trim().toLowerCase()
+    room = room.trim().toLowerCase();
     return users.filter((user) => user.room === room)
-}
+};
+
+const updateRating = (id, change) => {
+    let user = users.find((user) => user.id === id);
+    user.rating += change
+};
 
 module.exports = {
     addUser,
     removeUser,
     getUser,
-    getUsersInRoom
-}
+    getUsersInRoom,
+    updateRating
+};
