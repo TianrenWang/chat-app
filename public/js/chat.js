@@ -13,7 +13,7 @@ const locationMessageTemplate = document.querySelector('#location-message-templa
 const sidebarTemplate = document.querySelector('#sidebar-template').innerHTML
 
 // Options
-const { username, room } = Qs.parse(location.search, { ignoreQueryPrefix: true })
+const { userID, room } = Qs.parse(location.search, { ignoreQueryPrefix: true })
 
 const autoscroll = () => {
     // New message element
@@ -39,7 +39,7 @@ const autoscroll = () => {
 }
 
 socket.on('message', (message) => {
-    console.log(message)
+    console.log('new message: ' + message)
     const html = Mustache.render(messageTemplate, {
         username: message.username,
         message: message.text,
@@ -69,6 +69,8 @@ socket.on('roomData', ({ room, users }) => {
 })
 
 $messageForm.addEventListener('submit', (e) => {
+
+    console.log("Message input listened")
     e.preventDefault()
 
     $messageFormButton.setAttribute('disabled', 'disabled')
@@ -89,6 +91,7 @@ $messageForm.addEventListener('submit', (e) => {
 })
 
 $sendLocationButton.addEventListener('click', () => {
+    console.log("1")
     if (!navigator.geolocation) {
         return alert('Geolocation is not supported by your browser.')
     }
@@ -106,7 +109,7 @@ $sendLocationButton.addEventListener('click', () => {
     })
 })
 
-socket.emit('join', { username, room }, (error) => {
+socket.emit('join', { userID, room }, (error) => {
     if (error) {
         alert(error)
         location.href = '/'
