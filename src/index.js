@@ -4,8 +4,8 @@ const express = require('express')
 const socketio = require('socket.io')
 const Filter = require('bad-words')
 const mongoose = require('mongoose')
+const User = require('./models/user')
 const { generateMessage, generateLocationMessage } = require('./utils/messages')
-const { addUser, removeUser, getUser, getUsersInRoom } = require('./utils/users')
 
 const app = express()
 const server = http.createServer(app)
@@ -15,6 +15,12 @@ const port = process.env.PORT || 3000
 const publicDirectoryPath = path.join(__dirname, '../public')
 
 app.use(express.static(publicDirectoryPath))
+
+mongoose.connect('mongodb://127.0.0.1:27017/chat-app', {
+    useNewUrlParser: true,
+    useCreateIndex: true,
+    useFindAndModify: false
+})
 
 function makeid(length) {
     var result           = '';
@@ -51,73 +57,91 @@ function getDistance(lat1, lon1, lat2, lon2, unit) {
 io.on('connection', (socket) => {
     console.log('New WebSocket connection');
 
-    socket.on('entered queue', (options, callback) => {
-        socket.join("waiting");
-        console.log("Somebody entered waiting line");
-        // console.log(navigator)
-        //
-        // // Get user location first
-        // navigator.geolocation.getCurrentPosition((position) => {
-        //     console.log(position.coords.latitude)
-        // })
-
-        const { error, user } = addUser({ id: socket.id, room: "waiting", ...options });
-
-        if (error) {
-            return callback(error)
-        }
-
-        let waitingUsers = getUsersInRoom("waiting");
-
-
-        while (waitingUsers.length > 1) { //Use for each instead of while. Loop through each element. This won't be interfered
-            const position1 = waitingUsers[0].position;
-            const position2 = waitingUsers[1].position;
-            const distance = getDistance(position1.latitude, position1.longitude, position2.latitude,
-                position2.longitude, 'K');
-            if (distance < 15) {
-                const user1 = waitingUsers.pop();
-                const user2 = waitingUsers.pop();
-                const roomID = makeid(5);
-                const socket1 = io.sockets.connected[user1.id];
-                const socket2 = io.sockets.connected[user2.id];
-                socket1.emit("matched", roomID);
-                socket2.emit("matched", roomID);
-                console.log("Matched")
+    socket.on('enter', (options, callback) => {
+        console.log("Somebody entered the app")
+        User.findOne({username: options.username}).then((user) => {
+            console.log("Found user is : " + user)
+            if (!user) {
+                user = new User({
+                    username: options.username,
+                    position: options.position,
+                    password: 1234567,
+                    email: "zergshit@motherfu.ck",
+                    socket: socket.id,
+                    room: "waiting"
+                });
+                console.log("New user created: " + user.username)
             }
-        }
+
+            socket.join("waiting");
+            console.log(user.username + " entered waiting line");
+            user.room = "waiting";
+
+            user.save().then(() => {
+                console.log("Saved user to database");
+                User.find({room: "waiting"}).then((users) => {
+                    console.log("Users currently waiting: " + users)
+                    while (users.length > 1) { //Use for each instead of while. Loop through each element. This won't be interfered
+                        const position1 = users[0].position;
+                        const position2 = users[1].position;
+                        const distance = getDistance(position1.latitude, position1.longitude, position2.latitude,
+                            position2.longitude, 'K');
+                        if (distance < 15) {
+                            const roomID = makeid(5);
+                            const socket1 = io.sockets.connected[users[0].socket];
+                            const socket2 = io.sockets.connected[users[1].socket];
+                            socket1.emit("matched", {room: roomID, id: users[0]._id});
+                            socket2.emit("matched", {room: roomID, id: users[1]._id});
+                            console.log("Matched " + users[0].username + " and " + users[1].username)
+                            users.pop()
+                            users.pop()
+                        }
+                    }
+                }).catch((error) =>{
+                    console.log(error)
+                    return error
+                })
+            }).catch((e) => {
+                console.log(e)
+                return callback(e);
+            });
+        }).catch((e) => {
+            console.log(e)
+            return e
+        })
 
         callback()
     });
 
     socket.on('join', (options, callback) => {
-        const { error, user } = addUser({ id: socket.id, ...options });
-
-        if (error) {
-            return callback(error)
-        }
-
-        socket.join(user.room);
-
-        socket.emit('message', generateMessage('Admin', 'Welcome!'));
-        socket.broadcast.to(user.room).emit('message', generateMessage('Admin', `${user.username} has joined!`));
-        io.to(user.room).emit('roomData', {
-            room: user.room,
-            users: getUsersInRoom(user.room)
-        });
+        console.log(options.room)
+        socket.join(options.room);
+        User.findByIdAndUpdate(options.userID, {_id: options.userID, room: options.room, socket: socket.id}).then(async (user) => {
+            console.log(user.username + " joined " + options.room)
+            socket.emit('message', generateMessage('Admin', 'Welcome!'));
+            socket.broadcast.to(options.room).emit('message', generateMessage('Admin', `${user.username} has joined!`));
+            io.to(options.room).emit('roomData', {
+                room: options.room,
+                users: await User.find({room: options.room})
+            });
+        }).catch((error) =>{
+            console.log(error)
+            return error
+        })
 
         callback()
     });
 
     socket.on('sendMessage', (message, callback) => {
-        const user = getUser(socket.id)
-        const filter = new Filter()
+        console.log("Emitted Send Message")
+        User.findOne({socket: socket.id}).then((user) => {
+            console.log("User found: " + user)
+            console.log("Type: " + typeof(user))
+            let something = user.room
+            console.log("Emitting to room: " + something)
+            io.to(user.room).emit('message', generateMessage(user.username, message))
+        })
 
-        if (filter.isProfane(message)) {
-            return callback('Profanity is not allowed!')
-        }
-
-        io.to(user.room).emit('message', generateMessage(user.username, message))
         callback()
     })
 
@@ -128,16 +152,21 @@ io.on('connection', (socket) => {
     })
 
     socket.on('disconnect', () => {
-        const user = removeUser(socket.id)
-
-        console.log(user.username + " disconnected")
-        if (user) {
-            io.to(user.room).emit('message', generateMessage('Admin', `${user.username} has left!`))
-            io.to(user.room).emit('roomData', {
-                room: user.room,
-                users: getUsersInRoom(user.room)
-            })
-        }
+        // User.findByIdAndUpdate({socket: socket.id}, {room: 'disconnected', socket: null}).then(async (user) => {
+        //
+        //     console.log(user.username + " disconnected")
+        //     if (user) {
+        //         io.to(user.room).emit('message', generateMessage('Admin', `${user.username} has left!`))
+        //         io.to(user.room).emit('roomData', {
+        //             room: user.room,
+        //             users: getUsersInRoom(user.room)
+        //         })
+        //     }
+        // }).catch((error) =>{
+        //     console.log(error)
+        //     return error
+        // })
+        console.log("Somebody disconnected")
     })
 })
 

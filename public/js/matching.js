@@ -8,7 +8,7 @@ navigator.geolocation.getCurrentPosition((position) => {
         latitude: position.coords.latitude,
         longitude: position.coords.longitude
     }
-    socket.emit('entered queue', {username, position}, (error) => {
+    socket.emit('enter', {username, position}, (error) => {
         if (error) {
             alert(error)
             location.href = '/'
@@ -23,6 +23,6 @@ navigator.geolocation.getCurrentPosition((position) => {
 //     }
 // })
 
-socket.on('matched', (roomID) =>{
-    window.location.href = "http://localhost:3000/chat.html?username=" + username + "&&room=" + roomID;
+socket.on('matched', (options) =>{
+    window.location.href = "http://localhost:3000/chat.html?userID=" + options.id + "&&room=" + options.room;
 })
